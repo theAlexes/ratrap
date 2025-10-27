@@ -1,0 +1,4 @@
+true : bin_annot, safe_string, principal, package(bytes), package(eio_main), package(cohttp-eio), package(logs.fmt), package(logs.threaded)
+
+<src> : include
+<test> : include

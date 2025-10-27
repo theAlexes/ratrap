@@ -1,0 +1,27 @@
+opam-version: "1.2"
+maintainer: "Alex ␀ Maestas <ocaml-ratrap@se30.xyz>"
+authors: ["Alex ␀ Maestas <ocaml-ratrap@se30.xyz>"]
+homepage: "https://fossil.se30.xyz/ratrap"
+doc: "https://fossil.se30.xyz/ratrap"
+license: "ISC"
+dev-repo: "https://fossil.se30.xyz/ratrap"
+bug-reports: "https://fossil.se30.xyz/ratrap"
+tags: []
+available: [ ocaml-version >= "5.4.0"]
+depends:
+[
+  "ocaml" { >= "5.4.0" }
+  "ocamlfind" {build}
+  "ocamlbuild" {build}
+  "topkg" {build & >= "0.9.0"}
+  "eio_main"
+  "ctypes"
+  "ctypes-foreign"
+  "cohttp-eio"
+]
+depopts: []
+build:
+[[
+  "ocaml" "pkg/pkg.ml" "build"
+          "--dev-pkg" "%{dev}%"
+]]

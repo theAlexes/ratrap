@@ -1,0 +1,7 @@
+description = "blocklisting http stub"
+version = "%%VERSION_NUM%%"
+requires = ""
+archive(byte) = "ratrap.cma"
+archive(native) = "ratrap.cmxa"
+plugin(byte) = "ratrap.cma"
+plugin(native) = "ratrap.cmxs"
