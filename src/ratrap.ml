@@ -8,18 +8,29 @@
 open Cohttp
 open Cohttp_eio
 
-exception Die of string
-
 let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
+let connection_close = Cohttp.Header.of_list [("connection", "close")]
+
+let blocklist xff =
+  Logs.app (fun m -> m "Blocklisting %s" xff)
+
+let blocklist_of_headers h =
+  ignore @@
+    match Header.get h "x-forwarded-for" with
+    | Some xff -> blocklist xff
+    | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting")
 
 let callback transport req body =
   let path = req |> Request.uri |> Uri.path_and_query in
   let meth = req |> Request.meth |> Code.string_of_method in
-  let headers = req |> Request.headers |> Header.to_string in
+  let headers = req |> Request.headers in
+  let headers_string = headers |> Header.to_string in
   let request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240 in
   let ((_, conn), _) = transport in
-  Logs.app (fun m -> m "%s %s\n%s%s---" meth path headers request_body);
-  Cohttp_eio.Server.respond_string ~status:(`Code 444) ~body:"" ()
+  Logs.app (fun m -> m "Connection from %s\n%s %s\n%s%s" (string_of_sockaddr conn) meth path headers_string request_body);
+  blocklist_of_headers headers;
+  Logs.app (fun m -> m "---");
+  Cohttp_eio.Server.respond_string ?headers:(Some connection_close) ~status:(`Code 444) ~body:"" ()
 
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
 

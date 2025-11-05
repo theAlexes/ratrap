@@ -18,6 +18,7 @@ depends:
   "ctypes"
   "ctypes-foreign"
   "cohttp-eio"
+  "posix-socket"
 ]
 depopts: []
 build:
