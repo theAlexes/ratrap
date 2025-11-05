@@ -19,18 +19,18 @@ let callback transport req body =
   let request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240 in
   let ((_, conn), _) = transport in
   Logs.app (fun m -> m "%s %s\n%s%s---" meth path headers request_body);
-  raise (Die (string_of_sockaddr conn))
+  Cohttp_eio.Server.respond_string ~status:(`Code 444) ~body:"" ()
 
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
 
 let () =
   Logs.set_reporter (Logs_fmt.reporter ());
   Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
+  Eio.Switch.run ~name:"http" @@ fun sw ->
   let socket =
     Eio.Net.listen env#net ~sw ~backlog:128
       (`Tcp (Eio.Net.Ipaddr.V4.loopback, 8000))
-  and server = Cohttp_eio.Server.make_expert ~callback () in
+  and server = Cohttp_eio.Server.make ~callback () in
   Logs.app (fun m -> m "---");
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 

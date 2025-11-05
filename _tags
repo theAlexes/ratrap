@@ -1,4 +1,4 @@
-true : bin_annot, safe_string, principal, package(bytes), package(eio_main), package(cohttp-eio), package(logs.fmt), package(logs.threaded)
+true : bin_annot, safe_string, principal, package(bytes), package(eio_main), package(cohttp-eio), package(logs.fmt), package(logs.threaded), cclib(-lblacklist)
 
 <src> : include
 <test> : include
