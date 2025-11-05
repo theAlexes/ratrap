@@ -9,16 +9,15 @@ open Cohttp
 open Cohttp_eio
 
 let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
-let connection_close = Cohttp.Header.of_list [("connection", "close")]
+let connection_close = Some Cohttp.Header.(of_list [("connection", "close")])
 
 let blocklist xff =
   Logs.app (fun m -> m "Blocklisting %s" xff)
 
 let blocklist_of_headers h =
-  ignore @@
-    match Header.get h "x-forwarded-for" with
-    | Some xff -> blocklist xff
-    | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting")
+  match Header.get h "x-forwarded-for" with
+  | Some xff -> blocklist xff; `Code 444
+  | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting"); `Internal_server_error
 
 let callback transport req body =
   let path = req |> Request.uri |> Uri.path_and_query in
@@ -28,22 +27,25 @@ let callback transport req body =
   let request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240 in
   let ((_, conn), _) = transport in
   Logs.app (fun m -> m "Connection from %s\n%s %s\n%s%s" (string_of_sockaddr conn) meth path headers_string request_body);
-  blocklist_of_headers headers;
+  let status = blocklist_of_headers headers in
   Logs.app (fun m -> m "---");
-  Cohttp_eio.Server.respond_string ?headers:(Some connection_close) ~status:(`Code 444) ~body:"" ()
+  Cohttp_eio.Server.respond_string ?headers:connection_close ~status ~body:"" ()
 
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
 
-let () =
-  Logs.set_reporter (Logs_fmt.reporter ());
-  Eio_main.run @@ fun env ->
+let http_server net =
   Eio.Switch.run ~name:"http" @@ fun sw ->
   let socket =
-    Eio.Net.listen env#net ~sw ~backlog:128
+    Eio.Net.listen net ~sw ~backlog:128
       (`Tcp (Eio.Net.Ipaddr.V4.loopback, 8000))
   and server = Cohttp_eio.Server.make ~callback () in
   Logs.app (fun m -> m "---");
   Cohttp_eio.Server.run socket server ~on_error:log_warning
+
+let () =
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Eio_main.run @@ fun env ->
+  http_server env#net
 
 
 (*---------------------------------------------------------------------------
