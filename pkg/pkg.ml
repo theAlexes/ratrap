@@ -5,9 +5,7 @@ open Topkg
 
 let () =
   Pkg.describe "ratrap" @@ fun c ->
-  let macosx = match Conf.OCaml.(find "system" @@ v c `Host_os) with
-    | Some "macosx" -> true
-    | _ -> false in
+  let macosx = Option.value Conf.OCaml.(find "system" @@ v c `Host_os) ~default:"" = "macosx" in
   Ok [ Pkg.clib "src/libblacklist.clib" ~cond:(macosx);
        Pkg.bin "src/ratrap";
        Pkg.test "test/test"; ]
