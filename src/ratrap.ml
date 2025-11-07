@@ -7,6 +7,14 @@
 
 open Cohttp
 open Cohttp_eio
+open Ctypes
+open Foreign
+
+type blocklist_handle = unit ptr
+let blocklist_t : blocklist_handle typ = ptr void
+
+let blocklist_open = foreign "blacklist_open" (void @-> returning blocklist_t)
+let blocklist_close = foreign "blacklist_close" (blocklist_t @-> returning void)
 
 let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
 let connection_close = Some Cohttp.Header.(of_list [("connection", "close")])
@@ -44,8 +52,10 @@ let http_server net =
 
 let () =
   Logs.set_reporter (Logs_fmt.reporter ());
-  Eio_main.run @@ fun env ->
-  http_server env#net
+  let handle = blocklist_open () in
+  Eio_main.run @@ (fun env -> http_server env#net);
+  blocklist_close handle;
+  ()
 
 
 (*---------------------------------------------------------------------------
