@@ -30,5 +30,5 @@ let close =
 let sa_r =
   foreign "blacklist_sa_r" ~check_errno:true (
       t @-> action_t @-> fd @->
-        (ptr sockaddr_t) @-> socklen_t @-> string @->
+        (ptr sockaddr_t) @-> int @-> string @->
           returning int)
