@@ -19,7 +19,7 @@ let blocklist xff stream =
   match Unix.inet_addr_of_string xff with
   | addr ->
      Eio.Stream.add stream @@ c_sockaddr_of_unix addr
-  | exception Failure "inet_addr_of_string" [@warning "-52"] ->
+  | exception Failure _ ->
      Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
 
 let blocklist_of_headers h stream =
