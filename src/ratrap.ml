@@ -94,8 +94,9 @@ let blocklist_server stream () =
         | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
         | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
            Eio.traceln "did not blocklist, connection reset, falling back to _sa";
-           if Blocklist.sa Blocklist.Abusive fd sockaddr socklen "lol" = 0
-           then Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
+           if Blocklist.sa Blocklist.Abusive fd sockaddr socklen "lol" = 0 then begin
+               Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
+             end
            else failwith "Blocklist service reset and did not respond to retries"
         | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
