@@ -68,6 +68,7 @@ let blocklist_server stream () =
   let eio_listener = Eio_unix.Fd.of_unix ~sw ~close_unix:true listener in
   while true do
     let sockaddr = Eio.Stream.take stream in
+    Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
     Eio_unix.Fd.use eio_listener ~if_closed:(fun _ -> ()) (fun fd ->
         let socklen = Posix_socket.sockaddr_len sockaddr in
         match Blocklist.sa_r bl Blocklist.Abusive fd sockaddr socklen "lol" with
