@@ -12,11 +12,13 @@ let bind_addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, 60666)
 let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
 let connection_close = Some Cohttp.Header.(of_list [("connection", "close")])
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
+let c_sockaddr_of_unix addr = Posix_socket.(from_unix_sockaddr (Unix.ADDR_INET (addr, 0)))
 
 let blocklist xff stream =
   Eio.traceln "Blocklisting %s" xff;
   match Unix.inet_addr_of_string xff with
-  | addr -> Eio.Stream.add stream addr
+  | addr ->
+     Eio.Stream.add stream @@ c_sockaddr_of_unix addr
   | exception Failure "inet_addr_of_string" [@warning "-52"] ->
      Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
 
@@ -65,9 +67,8 @@ let blocklist_server stream () =
   );
   let eio_listener = Eio_unix.Fd.of_unix ~sw ~close_unix:true listener in
   while true do
-    let elt = Eio.Stream.take stream in
+    let sockaddr = Eio.Stream.take stream in
     Eio_unix.Fd.use eio_listener ~if_closed:(fun _ -> ()) (fun fd ->
-        let sockaddr = Posix_socket.from_unix_sockaddr (Unix.ADDR_INET (elt, 0)) in
         let socklen = Posix_socket.sockaddr_len sockaddr in
         match Blocklist.sa_r bl Blocklist.Abusive fd sockaddr socklen "lol" with
         | 0 -> Eio.traceln "successfully blocklisted"
