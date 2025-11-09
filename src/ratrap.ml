@@ -58,13 +58,10 @@ let blocklist_server stream () =
   let bl = Blocklist.open' ()
   and listener = Unix.(socket ~cloexec:true PF_INET SOCK_STREAM 0) in
   Eio.Switch.on_release sw (fun _ -> Blocklist.close bl);
-  Unix.(
-    begin
-      setsockopt listener SO_REUSEADDR true;
-      setsockopt listener SO_REUSEPORT true;
-      bind listener (Eio_unix.Net.sockaddr_to_unix bind_addr);
-    end
-  );
+  let open Unix in
+  setsockopt listener SO_REUSEADDR true;
+  setsockopt listener SO_REUSEPORT true;
+  bind listener (Eio_unix.Net.sockaddr_to_unix bind_addr);
   let eio_listener = Eio_unix.Fd.of_unix ~sw ~close_unix:true listener in
   while true do
     let sockaddr = Eio.Stream.take stream in
