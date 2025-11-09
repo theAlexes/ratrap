@@ -75,7 +75,6 @@ let blocklist_server stream () =
   let v4 = control_socket ~sw V4.loopback
   and v6 = control_socket ~sw V6.loopback in
   let reconnect () =
-    Eio.traceln "reconnecting";
     let new_blocklist = Blocklist.open' () in
     if new_blocklist = Ctypes.null then
       failwith "Can't reconnect, blocklist returned null"
@@ -96,7 +95,7 @@ let blocklist_server stream () =
         | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
            Eio.traceln "did not blocklist, connection reset, falling back to _sa";
            if Blocklist.sa Blocklist.Abusive fd sockaddr socklen "lol" = 0
-           then reconnect ()
+           then Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
            else failwith "Blocklist service reset and did not respond to retries"
         | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
