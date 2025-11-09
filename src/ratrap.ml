@@ -8,69 +8,81 @@
 open Cohttp
 open Cohttp_eio
 
-let bind_addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, 60666)
+let bind_port = ref 60666
 let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
 let connection_close = Some Cohttp.Header.(of_list [("connection", "close")])
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
-let c_sockaddr_of_unix addr = Posix_socket.(from_unix_sockaddr (Unix.ADDR_INET (addr, 60666)))
-
-let blocklist xff stream =
-  Eio.traceln "Blocklisting %s" xff;
-  match Unix.inet_addr_of_string xff with
-  | addr ->
-     Eio.Stream.add stream @@ c_sockaddr_of_unix addr
-  | exception Failure _ ->
-     Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
-
-let blocklist_of_headers h stream =
-  match Header.get h "x-forwarded-for" with
-  | Some xff -> blocklist xff stream;
-                `Code 444
-  | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
-            `Internal_server_error
-
-let callback transport req body ~stream =
-  let path = req |> Request.uri |> Uri.path_and_query
-  and meth = req |> Request.meth |> Code.string_of_method
-  and headers = req |> Request.headers
-  and request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240
-  and ((_, conn), _) = transport in
-  Logs.app (fun m ->
-      m "Connection from %s\n%s %s\n%s%s"
-        (string_of_sockaddr conn)
-        meth path
-        (Header.to_string headers)
-        request_body);
-  let status = blocklist_of_headers headers stream in
-  Logs.app (fun m -> m "---");
-  Cohttp_eio.Server.respond_string ?headers:connection_close ~status ~body:"" ()
+let c_sockaddr_of_unix addr = Posix_socket.(
+    from_unix_sockaddr (Unix.ADDR_INET (addr, !bind_port)))
 
 let http_server net stream =
+  let rec callback transport req body =
+    let path = req |> Request.uri |> Uri.path_and_query
+    and meth = req |> Request.meth |> Code.string_of_method
+    and headers = req |> Request.headers
+    and request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240
+    and ((_, conn), _) = transport in
+    Logs.app (fun m ->
+        m "Connection from %s\n%s %s\n%s%s"
+          (string_of_sockaddr conn)
+          meth path
+          (Header.to_string headers)
+          request_body);
+    let status = blocklist_of_headers headers stream in
+    Logs.app (fun m -> m "---");
+    Cohttp_eio.Server.respond_string ?headers:connection_close ~status ~body:"" ()
+  and blocklist_of_headers h stream =
+    match Header.get h "x-forwarded-for" with
+    | Some xff -> blocklist xff stream;
+                  `Code 444
+    | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
+              `Internal_server_error
+  and blocklist xff stream =
+    Eio.traceln "Blocklisting %s" xff;
+    match Unix.inet_addr_of_string xff with
+    | addr ->
+       Eio.Stream.add stream @@ (Unix.is_inet6_addr addr, c_sockaddr_of_unix addr)
+    | exception Failure _ ->
+       Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
+  in
   Eio.Switch.run ~name:"http" @@ fun sw ->
   let socket = Eio.Net.listen net ~sw
-                 ~backlog:128 ~reuse_addr:true ~reuse_port:true bind_addr
-  and server = Cohttp_eio.Server.make ~callback:(callback ~stream) () in
+                 ~backlog:128 ~reuse_addr:true ~reuse_port:true
+                 (`Tcp (Eio.Net.Ipaddr.V4.loopback, !bind_port))
+  and server = Cohttp_eio.Server.make ~callback () in
   Logs.app (fun m -> m "---");
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 
 let blocklist_server stream () =
+  (* a regular Eio.Net.listen socket does not expose its FD to us,
+     so we must construct a socket and bind it ourselves.
+     i suppose we could use the `import_listening_socket` call, but
+     we really aren't using it for anything other than its file descriptor. *)
+  let control_socket ~sw bind_addr =
+    let pf = Eio.Net.Ipaddr.fold bind_addr
+               ~v4:(fun _ -> Unix.PF_INET) ~v6:(fun _ -> Unix.PF_INET6) in
+    let listener = Unix.(socket ~cloexec:true pf SOCK_STREAM 0) in
+    let open Unix in
+    setsockopt listener SO_REUSEADDR true;
+    setsockopt listener SO_REUSEPORT true;
+    bind listener @@ Eio_unix.Net.sockaddr_to_unix (`Tcp (bind_addr, !bind_port));
+    Eio_unix.Fd.of_unix ~sw ~close_unix:true listener
+  in
   Eio.Switch.run ~name:"blocklist" @@ fun sw ->
-  let bl = Blocklist.open' ()
-  and listener = Unix.(socket ~cloexec:true PF_INET SOCK_STREAM 0) in
+  let bl = Blocklist.open' () in
   Eio.Switch.on_release sw (fun _ -> Blocklist.close bl);
-  let open Unix in
-  setsockopt listener SO_REUSEADDR true;
-  setsockopt listener SO_REUSEPORT true;
-  bind listener (Eio_unix.Net.sockaddr_to_unix bind_addr);
-  let eio_listener = Eio_unix.Fd.of_unix ~sw ~close_unix:true listener in
+  let open Eio.Net.Ipaddr in
+  let v4 = control_socket ~sw V4.loopback
+  and v6 = control_socket ~sw V6.loopback in
   while true do
-    let sockaddr = Eio.Stream.take stream in
-    Eio_unix.Fd.use eio_listener ~if_closed:ignore @@ fun fd ->
+    let is_v6, sockaddr = Eio.Stream.take stream in
+    let loopback = if is_v6 then v6 else v4 in
+    Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
         let socklen = Posix_socket.sockaddr_len sockaddr in
         match Blocklist.sa_r bl Blocklist.Abusive fd sockaddr socklen "lol" with
         | 0 -> Eio.traceln "successfully blocklisted"
-        | x -> Eio.traceln "did not blocklist: %d" x
+        | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
         | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 
