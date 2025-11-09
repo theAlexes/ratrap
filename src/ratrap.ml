@@ -69,20 +69,35 @@ let blocklist_server stream () =
     Eio_unix.Fd.of_unix ~sw ~close_unix:true listener
   in
   Eio.Switch.run ~name:"blocklist" @@ fun sw ->
-  let bl = Blocklist.open' () in
-  Eio.Switch.on_release sw (fun _ -> Blocklist.close bl);
+  let bl = ref @@ Blocklist.open' () in
+  Eio.Switch.on_release sw (fun _ -> Blocklist.close !bl);
   let open Eio.Net.Ipaddr in
   let v4 = control_socket ~sw V4.loopback
   and v6 = control_socket ~sw V6.loopback in
+  let reconnect () =
+    Eio.traceln "reconnecting";
+    let new_blocklist = Blocklist.open' () in
+    if new_blocklist = Ctypes.null then
+      failwith "Can't reconnect, blocklist returned null"
+    else begin
+        ignore @@ Blocklist.close !bl;
+        bl := new_blocklist
+      end
+  in
   while true do
     let is_v6, sockaddr = Eio.Stream.take stream in
     let loopback = if is_v6 then v6 else v4 in
     Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
         let socklen = Posix_socket.sockaddr_len sockaddr in
-        match Blocklist.sa_r bl Blocklist.Abusive fd sockaddr socklen "lol" with
+        match Blocklist.sa_r !bl Blocklist.Abusive fd sockaddr socklen "lol" with
         | 0 -> Eio.traceln "successfully blocklisted"
         | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
+        | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
+           Eio.traceln "did not blocklist, connection reset, falling back to _sa";
+           if Blocklist.sa Blocklist.Abusive fd sockaddr socklen "lol" = 0
+           then reconnect ()
+           else failwith "Blocklist service reset and did not respond to retries"
         | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 

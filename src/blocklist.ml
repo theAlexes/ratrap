@@ -21,6 +21,11 @@ let open' =
   foreign "blacklist_open" (void @-> returning t)
 let close =
   foreign "blacklist_close" (t @-> returning void)
+let sa =
+  foreign "blacklist_sa" ~check_errno:true (
+      action_t @-> fd @->
+        (ptr sockaddr_t) @-> int @-> string @->
+          returning int)
 let sa_r =
   foreign "blacklist_sa_r" ~check_errno:true (
       t @-> action_t @-> fd @->

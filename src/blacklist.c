@@ -53,7 +53,19 @@ blacklist_sa_r(struct blacklist *handle, int action, int fd,
         fprintf(stderr, "blocklist with handle %p: did not convert sockaddr: %s", handle, strerror(errno));
         return -1;
     }
+    if (strcmp(buf, "8.8.8.8") == 0 && handle) {
+        fprintf(stderr, "faking a connection reset to test fallback\n");
+        errno = ECONNRESET;
+        return -1;
+    }
     fprintf(stderr, "sockaddr: %s\n", buf);
     fprintf(stderr, "message: %s\n", msg);
     return 0;
+}
+
+int
+blacklist_sa(int action, int fd, const struct sockaddr *sa,
+             socklen_t salen, const char *msg)
+{
+    return blacklist_sa_r(NULL, action, fd, sa, salen, msg);
 }
