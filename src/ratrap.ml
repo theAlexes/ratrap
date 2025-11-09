@@ -8,77 +8,82 @@
 open Cohttp
 open Cohttp_eio
 
-let bind_addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, 8000)
-
+let bind_addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, 60666)
 let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
 let connection_close = Some Cohttp.Header.(of_list [("connection", "close")])
+let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
 
-let stream = Eio.Stream.create 0
-
-let blocklist xff =
+let blocklist xff stream =
   Eio.traceln "Blocklisting %s" xff;
-  Eio.Stream.add stream @@ Unix.inet_addr_of_string xff
+  match Unix.inet_addr_of_string xff with
+  | addr -> Eio.Stream.add stream addr
+  | exception Failure "inet_addr_of_string" [@warning "-52"] ->
+     Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
 
-let blocklist_of_headers h =
+let blocklist_of_headers h stream =
   match Header.get h "x-forwarded-for" with
-  | Some xff -> blocklist xff;
+  | Some xff -> blocklist xff stream;
                 `Code 444
   | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
             `Internal_server_error
 
-let callback transport req body =
-  let path = req |> Request.uri |> Uri.path_and_query in
-  let meth = req |> Request.meth |> Code.string_of_method in
-  let headers = req |> Request.headers in
-  let headers_string = headers |> Header.to_string in
-  let request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240 in
-  let ((_, conn), _) = transport in
+let callback transport req body ~stream =
+  let path = req |> Request.uri |> Uri.path_and_query
+  and meth = req |> Request.meth |> Code.string_of_method
+  and headers = req |> Request.headers
+  and request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240
+  and ((_, conn), _) = transport in
   Logs.app (fun m ->
       m "Connection from %s\n%s %s\n%s%s"
         (string_of_sockaddr conn)
         meth path
-        headers_string
+        (Header.to_string headers)
         request_body);
-  let status = blocklist_of_headers headers in
+  let status = blocklist_of_headers headers stream in
   Logs.app (fun m -> m "---");
   Cohttp_eio.Server.respond_string ?headers:connection_close ~status ~body:"" ()
 
-let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
-
-let http_server net =
+let http_server net stream =
   Eio.Switch.run ~name:"http" @@ fun sw ->
-  let socket = Eio.Net.listen net ~sw ~backlog:128 ~reuse_port:true bind_addr
-  and server = Cohttp_eio.Server.make ~callback () in
+  let socket = Eio.Net.listen net ~sw
+                 ~backlog:128 ~reuse_addr:true ~reuse_port:true bind_addr
+  and server = Cohttp_eio.Server.make ~callback:(callback ~stream) () in
   Logs.app (fun m -> m "---");
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 
-let blocklist_server () =
+let blocklist_server stream () =
   Eio.Switch.run ~name:"blocklist" @@ fun sw ->
-  let bl = Blocklist.open' in
-  let listener = Unix.(socket ~cloexec:true PF_INET SOCK_STREAM 0) in
-  ignore @@ Unix.(setsockopt listener SO_REUSEPORT true);
-  ignore @@ Unix.bind listener (Eio_unix.Net.sockaddr_to_unix bind_addr);
+  let bl = Blocklist.open' ()
+  and listener = Unix.(socket ~cloexec:true PF_INET SOCK_STREAM 0) in
+  Eio.Switch.on_release sw (fun _ -> Blocklist.close bl);
+  Unix.(
+    begin
+      setsockopt listener SO_REUSEADDR true;
+      setsockopt listener SO_REUSEPORT true;
+      bind listener (Eio_unix.Net.sockaddr_to_unix bind_addr);
+    end
+  );
   let eio_listener = Eio_unix.Fd.of_unix ~sw ~close_unix:true listener in
   while true do
     let elt = Eio.Stream.take stream in
     Eio_unix.Fd.use eio_listener ~if_closed:(fun _ -> ()) (fun fd ->
-        Eio.traceln "blub %s" (Unix.string_of_inet_addr elt);
-        let sockaddr = Posix_socket.from_unix_sockaddr elt in
+        let sockaddr = Posix_socket.from_unix_sockaddr (Unix.ADDR_INET (elt, 0)) in
         let socklen = Posix_socket.sockaddr_len sockaddr in
-        let rv = Blocklist.sa_r bl Blocklist.Abusive fd sockaddr socklen "lol" in
-        if rv = 0 then
-          Eio.traceln "successfully blocklisted"
-        else
-          Eio.traceln "failed to blocklist: %d" rv
+        match Blocklist.sa_r bl Blocklist.Abusive fd sockaddr socklen "lol" with
+        | 0 -> Eio.traceln "successfully blocklisted"
+        | x -> Eio.traceln "did not blocklist: %d" x
+        | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
       );
-    Eio.Fiber.yield ();
-  done;
-  ()
+  done
 
 let () =
   Logs.set_reporter (Logs_fmt.reporter ());
   Eio_main.run @@ (fun env ->
-    Eio.Fiber.both (http_server env#net) (blocklist_server))
+    Eio.Switch.run ~name:"main" @@ fun sw ->
+    let stream = Eio.Stream.create 0 in
+    Eio.Fiber.fork ~sw (blocklist_server stream);
+    http_server env#net stream
+  )
 
 
 (*---------------------------------------------------------------------------
