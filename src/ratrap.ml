@@ -12,7 +12,7 @@ let bind_addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, 60666)
 let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
 let connection_close = Some Cohttp.Header.(of_list [("connection", "close")])
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
-let c_sockaddr_of_unix addr = Posix_socket.(from_unix_sockaddr (Unix.ADDR_INET (addr, 0)))
+let c_sockaddr_of_unix addr = Posix_socket.(from_unix_sockaddr (Unix.ADDR_INET (addr, 60666)))
 
 let blocklist xff stream =
   Eio.traceln "Blocklisting %s" xff;
@@ -68,14 +68,13 @@ let blocklist_server stream () =
   let eio_listener = Eio_unix.Fd.of_unix ~sw ~close_unix:true listener in
   while true do
     let sockaddr = Eio.Stream.take stream in
+    Eio_unix.Fd.use eio_listener ~if_closed:(fun _ -> ()) @@ fun fd ->
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
-    Eio_unix.Fd.use eio_listener ~if_closed:(fun _ -> ()) (fun fd ->
         let socklen = Posix_socket.sockaddr_len sockaddr in
         match Blocklist.sa_r bl Blocklist.Abusive fd sockaddr socklen "lol" with
         | 0 -> Eio.traceln "successfully blocklisted"
         | x -> Eio.traceln "did not blocklist: %d" x
         | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
-      );
   done
 
 let () =
