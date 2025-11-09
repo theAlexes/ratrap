@@ -76,13 +76,11 @@ let blocklist_server stream () =
 
 let () =
   Logs.set_reporter (Logs_fmt.reporter ());
-  Eio_main.run @@ (fun env ->
+  Eio_main.run @@ fun env ->
     Eio.Switch.run ~name:"main" @@ fun sw ->
     let stream = Eio.Stream.create 0 in
     Eio.Fiber.fork ~sw (blocklist_server stream);
     http_server env#net stream
-  )
-
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas
