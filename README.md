@@ -48,8 +48,9 @@ Finally, place this stanza or similar in your `nginx` configuration as
 appropriate. We have a file `ratrap` in the configuration root and
 `include ratrap;` in our `sites-enabled` files.
 
-    location ~* (cgi-bin|\.php$|\.env|/aws|^/service|.git/config|/wp-|/wordpress/) {
+    location ~* (cgi-bin|\.php$|\.env|/aws|^/service|\.git/config|/wp-|/wordpress/) {
         proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Content-Length "";
         proxy_pass_request_headers off;
         proxy_pass_request_body off;
         proxy_pass http://localhost:60666;
