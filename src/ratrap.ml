@@ -34,7 +34,7 @@ let http_server net stream =
   and blocklist_of_headers h stream =
     match Header.get h "x-forwarded-for" with
     | Some xff -> blocklist xff stream;
-                  `Code 444
+                  `Not_found
     | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
               `Internal_server_error
   and blocklist xff stream =
