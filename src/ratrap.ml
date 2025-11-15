@@ -9,28 +9,49 @@ open Cohttp
 open Cohttp_eio
 
 let bind_port = ref 60666
-let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
-let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
 
 let http_server net stream =
   let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
-  let slurp body =
-    let buf = Cstruct.create 240 in
-    match Eio.Flow.read_exact body buf with () | exception End_of_file -> ();
-    Cstruct.to_string buf
+  let sip maxlen body =
+    let buf = Cstruct.create maxlen in
+    let len = try Eio.Flow.single_read body buf with
+              | End_of_file | Unix.Unix_error _ -> 0
+    in
+    Cstruct.to_string ~len buf
   in
+  let defang string =
+    let buf = Buffer.create (String.length string) in
+    let defang' c =
+      let code = Char.code c in
+      match c with
+      | '\n' -> (* pass newlines through on their own*)
+         Buffer.add_char buf '\n'
+      | _ when code < 0x20 -> (* C0 controls become their control pictures *)
+         Buffer.add_utf_8_uchar buf @@ Uchar.of_int (code lor 0x2400)
+      | _ when code = 0x7f -> (* DEL has an out-of-sequence control picture *)
+         Buffer.add_utf_8_uchar buf @@ Uchar.of_int 0x2421
+      | _ when code > 0x7f -> (* bytes with their eighth bit set become C-hex *)
+         Buffer.add_string buf (Fmt.str "\\x%.2x" code)
+      | _ -> (* the rest of ASCII stays ASCII *)
+         Buffer.add_char buf c
+    in
+    String.iter defang' string;
+    Buffer.contents buf
+  in
+  let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp in
   let rec callback transport req body =
     let path = req |> Request.uri |> Uri.path_and_query
     and meth = req |> Request.meth |> Code.string_of_method
     and headers = req |> Request.headers
-    and request_body = slurp body
+    and request_body = sip 240 body
     and ((_, conn), _) = transport in
     Logs.app (fun m ->
-        m "Connection from %s\n%s %s\n%s%s"
+        m "Connection from %s\n%s %s\n%s\n\n%s"
           (string_of_sockaddr conn)
-          meth path
-          (Header.to_string headers)
-          request_body);
+          meth (defang path)
+          (* we're on unix, don't put \r when displaying the headers *)
+          (defang @@ String.concat "\n" @@ Header.to_frames headers)
+          (defang request_body));
     let status = blocklist_of_headers headers stream in
     Logs.app (fun m -> m "---");
     Cohttp_eio.Server.respond_string ~headers:connection_close ~status ~body:"" ()
@@ -48,6 +69,7 @@ let http_server net stream =
     | exception Failure _ ->
        Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
   in
+  let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex) in
   Eio.Switch.run ~name:"http" @@ fun sw ->
   let socket = Eio.Net.listen net ~sw
                  ~backlog:128 ~reuse_addr:true ~reuse_port:true
