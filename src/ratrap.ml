@@ -9,18 +9,21 @@ open Cohttp
 open Cohttp_eio
 
 let bind_port = ref 60666
-let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
-let connection_close = Some Cohttp.Header.(of_list [("connection", "close")])
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
-let c_sockaddr_of_unix addr = Posix_socket.(
-    from_unix_sockaddr (Unix.ADDR_INET (addr, !bind_port)))
+let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp
 
 let http_server net stream =
+  let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
+  let slurp body =
+    let buf = Cstruct.create 240 in
+    match Eio.Flow.read_exact body buf with () | exception End_of_file -> ();
+    Cstruct.to_string buf
+  in
   let rec callback transport req body =
     let path = req |> Request.uri |> Uri.path_and_query
     and meth = req |> Request.meth |> Code.string_of_method
     and headers = req |> Request.headers
-    and request_body = Eio.Buf_read.(parse_exn take_all) body ~max_size:240
+    and request_body = slurp body
     and ((_, conn), _) = transport in
     Logs.app (fun m ->
         m "Connection from %s\n%s %s\n%s%s"
@@ -30,7 +33,7 @@ let http_server net stream =
           request_body);
     let status = blocklist_of_headers headers stream in
     Logs.app (fun m -> m "---");
-    Cohttp_eio.Server.respond_string ?headers:connection_close ~status ~body:"" ()
+    Cohttp_eio.Server.respond_string ~headers:connection_close ~status ~body:"" ()
   and blocklist_of_headers h stream =
     match Header.get h "x-forwarded-for" with
     | Some xff -> blocklist xff stream;
@@ -41,7 +44,7 @@ let http_server net stream =
     Eio.traceln "Blocklisting %s" xff;
     match Unix.inet_addr_of_string xff with
     | addr ->
-       Eio.Stream.add stream @@ (Unix.is_inet6_addr addr, c_sockaddr_of_unix addr)
+       Eio.Stream.add stream addr
     | exception Failure _ ->
        Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
   in
@@ -54,6 +57,12 @@ let http_server net stream =
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 
 let blocklist_server stream () =
+  let socklen_of_int x =
+    Ctypes.(coerce uint32_t Posix_socket.socklen_t) (Unsigned.UInt32.of_int x)
+  in
+  let c_sockaddr_of_unix addr = Posix_socket.(
+    from_unix_sockaddr (Unix.ADDR_INET (addr, !bind_port)))
+  in
   (* a regular Eio.Net.listen socket does not expose its FD to us,
      so we must construct a socket and bind it ourselves.
      i suppose we could use the `import_listening_socket` call, but
@@ -84,21 +93,23 @@ let blocklist_server stream () =
       end
   in
   while true do
-    let is_v6, sockaddr = Eio.Stream.take stream in
+    let addr = Eio.Stream.take stream in
+    let is_v6 = Unix.is_inet6_addr addr in
     let loopback = if is_v6 then v6 else v4 in
     Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
-        let socklen = Posix_socket.sockaddr_len sockaddr in
-        match Blocklist.sa_r !bl Blocklist.Abusive fd sockaddr socklen "lol" with
-        | 0 -> Eio.traceln "successfully blocklisted"
-        | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
-        | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
-           Eio.traceln "did not blocklist, connection reset, falling back to _sa";
-           if Blocklist.sa Blocklist.Abusive fd sockaddr socklen "lol" = 0 then begin
-               Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
-             end
-           else failwith "Blocklist service reset and did not respond to retries"
-        | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
+      let sockaddr = c_sockaddr_of_unix addr in
+      let socklen = socklen_of_int @@ Posix_socket.sockaddr_len sockaddr in
+      match Blocklist.sa_r !bl Blocklist.Abusive fd sockaddr socklen "lol" with
+      | 0 -> Eio.traceln "successfully blocklisted"
+      | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
+      | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
+         Eio.traceln "did not blocklist, connection reset, falling back to _sa";
+         if Blocklist.sa Blocklist.Abusive fd sockaddr socklen "lol" = 0 then begin
+             Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
+           end
+         else failwith "Blocklist service reset and did not respond to retries"
+      | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 
 let () =
