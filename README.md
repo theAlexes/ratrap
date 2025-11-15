@@ -3,7 +3,7 @@ ratrap — blocklisting http stub
 %%VERSION%%
 
 ratrap listens on 127.0.0.1, port 60666 for HTTP requests that contain
-`X-Forwarded_For`, and passes those addresses to the BSD `blocklistd` service.
+`X-Forwarded-For`, and passes those addresses to the BSD `blocklistd` service.
 
 It was written entirely by hand, and is distributed under the ISC license.
 
