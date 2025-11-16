@@ -16,8 +16,7 @@ let http_server net stream =
     let buf = Cstruct.create maxlen in
     let len = try Eio.Flow.single_read body buf with
               | End_of_file | Unix.Unix_error _ -> 0
-    in
-    Cstruct.to_string ~len buf
+    in Cstruct.to_string ~len buf
   in
   let defang string =
     let buf = Buffer.create (String.length string) in
@@ -57,7 +56,7 @@ let http_server net stream =
     Cohttp_eio.Server.respond_string ~headers:connection_close ~status ~body:"" ()
   and blocklist_of_headers h stream =
     match Header.get h "x-forwarded-for" with
-    | Some xff -> blocklist xff stream;
+    | Some xff -> blocklist (defang xff) stream;
                   `Not_found
     | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
               `Internal_server_error
