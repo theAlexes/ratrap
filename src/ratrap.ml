@@ -87,10 +87,10 @@ let blocklist_server stream () =
      i suppose we could use the `import_listening_socket` call, but
      we really aren't using it for anything other than its file descriptor. *)
   let control_socket ~sw bind_addr =
-    let pf = Eio.Net.Ipaddr.fold bind_addr
-               ~v4:(fun _ -> Unix.PF_INET) ~v6:(fun _ -> Unix.PF_INET6) in
-    let listener = Unix.(socket ~cloexec:true pf SOCK_STREAM 0) in
     let open Unix in
+    let pf = Eio.Net.Ipaddr.fold bind_addr
+               ~v4:Fun.(const PF_INET) ~v6:Fun.(const PF_INET6) in
+    let listener = socket ~cloexec:true pf SOCK_STREAM 0 in
     setsockopt listener SO_REUSEADDR true;
     setsockopt listener SO_REUSEPORT true;
     bind listener @@ Eio_unix.Net.sockaddr_to_unix (`Tcp (bind_addr, !bind_port));
