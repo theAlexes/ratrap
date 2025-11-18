@@ -19,20 +19,18 @@ let http_server net stream =
     in Cstruct.to_string ~len buf
   in
   let defang string =
-    let buf = Buffer.create (String.length string) in
+    let buf = Buffer.create @@ String.length string in
     let defang' c =
       let code = Char.code c in
       match c with
-      | '\n' -> (* pass newlines through on their own*)
-         Buffer.add_char buf '\n'
-      | _ when code < 0x20 -> (* C0 controls become their control pictures *)
-         Buffer.add_utf_8_uchar buf @@ Uchar.of_int (code lor 0x2400)
-      | _ when code = 0x7f -> (* DEL has an out-of-sequence control picture *)
-         Buffer.add_utf_8_uchar buf @@ Uchar.of_int 0x2421
-      | _ when code > 0x7f -> (* bytes with their eighth bit set become C-hex *)
-         Buffer.add_string buf (Fmt.str "\\x%.2x" code)
-      | _ -> (* the rest of ASCII stays ASCII *)
+      | '\n' | '\x20'..'\x7e' -> (* pass newlines and printable ASCII through *)
          Buffer.add_char buf c
+      | '\x80'..'\xff'        -> (* bytes with their eighth bit set become C-hex *)
+         Buffer.add_string buf (Fmt.str "\\x%.2x" code)
+      | '\x00'..'\x1f'        -> (* C0 controls become their control pictures *)
+         Buffer.add_utf_8_uchar buf @@ Uchar.of_int (code lor 0x2400)
+      | '\x7f'                -> (* DEL has an out-of-sequence control picture *)
+         Buffer.add_utf_8_uchar buf @@ Uchar.of_int 0x2421
     in
     String.iter defang' string;
     Buffer.contents buf
