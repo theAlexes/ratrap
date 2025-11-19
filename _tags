@@ -1,5 +1,5 @@
 true : ldopt(-shared)
-<*/ratrap*> or "src/blocklist.ml" : bin_annot, safe_string, principal, package(bytes), package(ctypes), package(ctypes-foreign), package(eio_main), package(http), package(cohttp), package(cohttp-eio), package(logs.fmt), package(logs.threaded), package(posix-socket), package(unix), cclib(-lblacklist)
+<*/ratrap*> or <src/blocklist.ml*> : bin_annot, safe_string, principal, package(bytes), package(ctypes), package(ctypes-foreign), package(eio_main), package(http), package(cohttp), package(cohttp-eio), package(logs.fmt), package(logs.threaded), package(posix-socket), package(unix), cclib(-lblacklist)
 
 <src> : include
 <test> : include

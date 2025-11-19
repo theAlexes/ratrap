@@ -8,9 +8,7 @@
 open Cohttp
 open Cohttp_eio
 
-let bind_port = ref 60666
-
-let http_server net stream =
+let http_server bind_port (net:'a Eio.Net.t) (stream:Unix.inet_addr Eio.Stream.t) =
   let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
   let sip maxlen body =
     let buf = Cstruct.create maxlen in
@@ -24,9 +22,9 @@ let http_server net stream =
       let code = Char.code c in
       match c with
       | '\n' | '\x20'..'\x7e' -> (* pass newlines and printable ASCII through *)
-         Buffer.add_char buf c
+         Buffer.add_char        buf c
       | '\x80'..'\xff'        -> (* bytes with their eighth bit set become C-hex *)
-         Buffer.add_string buf (Fmt.str "\\x%.2x" code)
+         Buffer.add_string      buf @@ Fmt.str "\\x%.2x" code
       | '\x00'..'\x1f'        -> (* C0 controls become their control pictures *)
          Buffer.add_utf_8_uchar buf @@ Uchar.of_int (code lor 0x2400)
       | '\x7f'                -> (* DEL has an out-of-sequence control picture *)
@@ -70,17 +68,17 @@ let http_server net stream =
   Eio.Switch.run ~name:"http" @@ fun sw ->
   let socket = Eio.Net.listen net ~sw
                  ~backlog:128 ~reuse_addr:true ~reuse_port:true
-                 (`Tcp (Eio.Net.Ipaddr.V4.loopback, !bind_port))
+                 (`Tcp (Eio.Net.Ipaddr.V4.loopback, bind_port))
   and server = Cohttp_eio.Server.make ~callback () in
   Logs.app (fun m -> m "---");
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 
-let blocklist_server stream () =
+let blocklist_server bind_port (stream:Unix.inet_addr Eio.Stream.t) () =
   let socklen_of_int x =
     Ctypes.(coerce uint32_t Posix_socket.socklen_t) (Unsigned.UInt32.of_int x)
   in
   let c_sockaddr_of_unix addr = Posix_socket.(
-    from_unix_sockaddr (Unix.ADDR_INET (addr, !bind_port)))
+    from_unix_sockaddr (Unix.ADDR_INET (addr, bind_port)))
   in
   (* a regular Eio.Net.listen socket does not expose its FD to us,
      so we must construct a socket and bind it ourselves.
@@ -93,7 +91,7 @@ let blocklist_server stream () =
     let listener = socket ~cloexec:true pf SOCK_STREAM 0 in
     setsockopt listener SO_REUSEADDR true;
     setsockopt listener SO_REUSEPORT true;
-    bind listener @@ Eio_unix.Net.sockaddr_to_unix (`Tcp (bind_addr, !bind_port));
+    bind listener @@ Eio_unix.Net.sockaddr_to_unix (`Tcp (bind_addr, bind_port));
     Eio_unix.Fd.of_unix ~sw ~close_unix:true listener
   in
   Eio.Switch.run ~name:"blocklist" @@ fun sw ->
@@ -131,13 +129,11 @@ let blocklist_server stream () =
       | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 
-let () =
-  Logs.set_reporter (Logs_fmt.reporter ());
-  Eio_main.run @@ fun env ->
-    Eio.Switch.run ~name:"main" @@ fun sw ->
-    let stream = Eio.Stream.create 0 in
-    Eio.Fiber.fork ~sw (blocklist_server stream);
-    http_server env#net stream
+let ratrap bind_port (net:'a Eio.Net.t) =
+  Eio.Switch.run ~name:"ratrap" @@ fun sw ->
+  let stream : Unix.inet_addr Eio.Stream.t = Eio.Stream.create 0 in
+  Eio.Fiber.fork ~sw (blocklist_server bind_port stream);
+  http_server bind_port net stream
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas
