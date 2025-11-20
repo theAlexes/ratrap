@@ -11,7 +11,11 @@
 
 (** {1 Ratrap} *)
 
-val ratrap : int -> 'a Eio.Net.t -> unit
+(** Run on the given port and network *)
+val run : int -> 'a Eio.Net.t -> (unit, string) result
+
+(** Use Eio_main to run the app on the default event loop *)
+val ratrap : int -> (unit, string) result
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas

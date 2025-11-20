@@ -11,9 +11,13 @@ Homepage: https://fossil.se30.xyz/ratrap
 
 ## Installation
 
-ratrap can be installed with `opam`:
+ratrap can be initially installed by cloning its Fossil repo and doing:
 
-    opam install ratrap
+    opam switch create .
+
+You can update it later by doing:
+
+    fossil up; and opam install .
 
 If you don't use `opam`, the package builds with `Topkg`, which we'll
 assume you can operate, given that you don't use `opam`.
@@ -103,9 +107,6 @@ From one of our servers:
 
 
 ## Bugs
-
-While the binding port 60666 is a `ref` in the code, there is no way to change
-the port without editing the code yet.
 
 The C function bindings actually use the legacy `blacklist` spelling because
 FreeBSD-14.3 does not use the renamed package from NetBSD upstream. If you

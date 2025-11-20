@@ -70,7 +70,7 @@ let http_server bind_port (net:'a Eio.Net.t) (stream:Unix.inet_addr Eio.Stream.t
                  ~backlog:128 ~reuse_addr:true ~reuse_port:true
                  (`Tcp (Eio.Net.Ipaddr.V4.loopback, bind_port))
   and server = Cohttp_eio.Server.make ~callback () in
-  Logs.app (fun m -> m "---");
+  Logs.app (fun m -> m "--- (bind port %d)" bind_port);
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 
 let blocklist_server bind_port (stream:Unix.inet_addr Eio.Stream.t) () =
@@ -129,11 +129,18 @@ let blocklist_server bind_port (stream:Unix.inet_addr Eio.Stream.t) () =
       | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 
-let ratrap bind_port (net:'a Eio.Net.t) =
+let run bind_port (net:'a Eio.Net.t) =
   Eio.Switch.run ~name:"ratrap" @@ fun sw ->
   let stream : Unix.inet_addr Eio.Stream.t = Eio.Stream.create 0 in
-  Eio.Fiber.fork ~sw (blocklist_server bind_port stream);
+  Eio.Fiber.fork_daemon ~sw (blocklist_server bind_port stream);
   http_server bind_port net stream
+
+let ratrap bind_port =
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Eio_main.run @@ fun env ->
+     match run bind_port env#net with
+     | _ -> Ok ()
+     | exception exn -> Error (Fmt.str "%a" Eio.Exn.pp exn)
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas
