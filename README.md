@@ -2,7 +2,7 @@ ratrap — blocklisting http stub
 -------------------------------------------------------------------------------
 %%VERSION%%
 
-ratrap listens on 127.0.0.1, port 60666 for HTTP requests that contain
+ratrap listens on 127.0.0.1, default port 60666 for HTTP requests that contain
 `X-Forwarded-For`, and passes those addresses to the BSD `blocklistd` service.
 
 It was written entirely by hand, and is distributed under the ISC license.
@@ -115,4 +115,4 @@ deploy this on NetBSD, you'll have to edit the Ctypes bindings in
 
 There are no tests.
 
-The package also builds on macOS using an undocumented stub library.
+The package also builds (but does nothing) on macOS using an undocumented stub library.
