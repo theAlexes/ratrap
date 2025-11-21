@@ -73,7 +73,7 @@ let http_server bind_port (net:'a Eio.Net.t) (stream:Unix.inet_addr Eio.Stream.t
   Logs.app (fun m -> m "--- (bind port %d)" bind_port);
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 
-let blocklist_server bind_port (stream:Unix.inet_addr Eio.Stream.t) () =
+let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) () =
   let socklen_of_int x =
     Ctypes.(coerce uint32_t Posix_socket.socklen_t) (Unsigned.UInt32.of_int x)
   in
@@ -117,7 +117,7 @@ let blocklist_server bind_port (stream:Unix.inet_addr Eio.Stream.t) () =
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
       let sockaddr = c_sockaddr_of_unix addr in
       let socklen = socklen_of_int @@ Posix_socket.sockaddr_len sockaddr in
-      match Blocklist.sa_r !bl Blocklist.Abusive fd sockaddr socklen "lol" with
+      match Blocklist.sa_r !bl action fd sockaddr socklen "lol" with
       | 0 -> Eio.traceln "successfully blocklisted"
       | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
       | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
@@ -129,16 +129,16 @@ let blocklist_server bind_port (stream:Unix.inet_addr Eio.Stream.t) () =
       | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 
-let run bind_port (net:'a Eio.Net.t) =
+let run ~bind_port ~action ~(net:'a Eio.Net.t) =
   Eio.Switch.run ~name:"ratrap" @@ fun sw ->
   let stream : Unix.inet_addr Eio.Stream.t = Eio.Stream.create 0 in
-  Eio.Fiber.fork_daemon ~sw (blocklist_server bind_port stream);
+  Eio.Fiber.fork_daemon ~sw (blocklist_server ~bind_port ~action ~stream);
   http_server bind_port net stream
 
-let ratrap bind_port =
+let ratrap ~bind_port ~action =
   Logs.set_reporter (Logs_fmt.reporter ());
   Eio_main.run @@ fun env ->
-     match run bind_port env#net with
+     match run ~bind_port ~action ~net:env#net with
      | _ -> Ok ()
      | exception exn -> Error (Fmt.str "%a" Eio.Exn.pp exn)
 

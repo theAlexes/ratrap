@@ -11,11 +11,11 @@
 
 (** {1 Ratrap} *)
 
-(** Run on the given port and network *)
-val run : int -> 'a Eio.Net.t -> (unit, string) result
+(** Run on the given port, mode, and network *)
+val run : bind_port:int -> action:Blocklist.action -> net:'a Eio.Net.t -> (unit, string) result
 
 (** Use Eio_main to run the app on the default event loop *)
-val ratrap : int -> (unit, string) result
+val ratrap : bind_port:int -> action:Blocklist.action -> (unit, string) result
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas
