@@ -110,7 +110,7 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
       | () -> Eio.traceln "successfully blocklisted"
       | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
          Eio.traceln "did not blocklist, connection reset, falling back to _sa";
-         match Blocklist.sa Blocklist.Abusive fd sockaddr "lol" with
+         match Blocklist.sa action fd sockaddr "lol" with
          | () -> Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
          | exception exn -> Fmt.failwith "Blocklist service reset and did not respond to retries: %a " Eio.Exn.pp exn
       | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
