@@ -1,33 +1,37 @@
 (** Interface to NetBSD/FreeBSD [libblocklist]
 
-
-    Uses {!Ctypes_foreign} to bind to {{:https://man.netbsd.org/blocklist.3} [libblocklist]}.
-
-    This module provides direct OCaml equivalents to the corresponding C functions and values.
- *)
+    This module uses {!Ctypes_foreign} to bind to
+    {{:https://man.netbsd.org/blocklist.3} [libblocklist]}. It provides slightly
+    enhanced OCaml equivalents to the corresponding C functions and values,
+    using higher-level {!Unix} types, isolating the user from the internal
+    [sockaddr]-and-[socklen_t] representation required by the underlying library
+    interface. *)
 
 (** {1 Blocklist} *)
 
-(** OCaml type representing the C result of [blocklist_open], which we treat as an abstract pointer. *)
-type handle = unit Ctypes.ptr
+(** OCaml type representing the C result of [blocklist_open]. *)
+type handle
 
 (** OCaml type representing the possible blocklist actions. *)
 type action = OK | Fail | Abusive | Bad_User
 
-(** Produce a connection to [blocklistd], or {!Ctypes.null} on failure. *)
+(** Produce a connection to [blocklistd].
+
+    @raises Out_of_memory if the underlying call returns [NULL], which it only
+      does if its call to [calloc] fails.
+ *)
+
 val open' : unit -> handle
 (** Close a given {!handle}. *)
 val close : handle -> unit
 
 (** Using the provided action and control-socket descriptor, blocklist the given
-    {{!Posix_socket.sockaddr}} and string message. The length value is currently required.
+    {{!Unix.sockaddr}} with the given string message.
 
     @return 0 when the underlying call succeeds.
     @raise Unix.Unix_error when the underlying call fails.
  *)
-val sa : action -> Unix.file_descr
-         -> Posix_socket.sockaddr Ctypes.ptr -> Posix_socket.socklen_t
-         -> string
+val sa : action -> Unix.file_descr -> Unix.sockaddr -> string
          -> int
 
 (** Same as {!sa}, but takes an additional {!handle} from {!open'}, which keeps
@@ -36,7 +40,6 @@ val sa : action -> Unix.file_descr
     @return 0 when the underlying call succeeds.
     @raise Unix.Unix_error when the underlying call fails.
  *)
-val sa_r : handle -> action -> Unix.file_descr
-           -> Posix_socket.sockaddr Ctypes.ptr -> Posix_socket.socklen_t
-           -> string
+val sa_r : handle ->
+           action -> Unix.file_descr -> Unix.sockaddr -> string
            -> int

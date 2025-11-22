@@ -74,12 +74,6 @@ let http_server bind_port (net:'a Eio.Net.t) (stream:Unix.inet_addr Eio.Stream.t
   Cohttp_eio.Server.run socket server ~on_error:log_warning
 
 let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) () =
-  let socklen_of_int x =
-    Ctypes.(coerce uint32_t Posix_socket.socklen_t) (Unsigned.UInt32.of_int x)
-  in
-  let c_sockaddr_of_unix addr = Posix_socket.(
-    from_unix_sockaddr (Unix.ADDR_INET (addr, bind_port)))
-  in
   (* a regular Eio.Net.listen socket does not expose its FD to us,
      so we must construct a socket and bind it ourselves.
      i suppose we could use the `import_listening_socket` call, but
@@ -102,12 +96,8 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
   and v6 = control_socket ~sw V6.loopback in
   let reconnect () =
     let new_blocklist = Blocklist.open' () in
-    if new_blocklist = Ctypes.null then
-      failwith "Can't reconnect, blocklist returned null"
-    else begin
-        ignore @@ Blocklist.close !bl;
-        bl := new_blocklist
-      end
+    ignore @@ Blocklist.close !bl;
+    bl := new_blocklist
   in
   while true do
     let addr = Eio.Stream.take stream in
@@ -115,14 +105,13 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
     let loopback = if is_v6 then v6 else v4 in
     Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
-      let sockaddr = c_sockaddr_of_unix addr in
-      let socklen = socklen_of_int @@ Posix_socket.sockaddr_len sockaddr in
-      match Blocklist.sa_r !bl action fd sockaddr socklen "lol" with
+      let sockaddr = Unix.ADDR_INET (addr, bind_port) in
+      match Blocklist.sa_r !bl action fd sockaddr "lol" with
       | 0 -> Eio.traceln "successfully blocklisted"
       | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
       | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
          Eio.traceln "did not blocklist, connection reset, falling back to _sa";
-         if Blocklist.sa Blocklist.Abusive fd sockaddr socklen "lol" = 0 then begin
+         if Blocklist.sa Blocklist.Abusive fd sockaddr "lol" = 0 then begin
              Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
            end
          else failwith "Blocklist service reset and did not respond to retries"
