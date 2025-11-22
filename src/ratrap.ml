@@ -107,14 +107,12 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
       let sockaddr = Unix.ADDR_INET (addr, bind_port) in
       match Blocklist.sa_r !bl action fd sockaddr "lol" with
-      | 0 -> Eio.traceln "successfully blocklisted"
-      | x -> Eio.traceln "did not blocklist, but also did not errno, rv %d" x
+      | () -> Eio.traceln "successfully blocklisted"
       | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
          Eio.traceln "did not blocklist, connection reset, falling back to _sa";
-         if Blocklist.sa Blocklist.Abusive fd sockaddr "lol" = 0 then begin
-             Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
-           end
-         else failwith "Blocklist service reset and did not respond to retries"
+         match Blocklist.sa Blocklist.Abusive fd sockaddr "lol" with
+         | () -> Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
+         | exception exn -> Fmt.failwith "Blocklist service reset and did not respond to retries: %a " Eio.Exn.pp exn
       | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 

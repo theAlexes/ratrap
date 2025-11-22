@@ -17,29 +17,31 @@ type action = OK | Fail | Abusive | Bad_User
 
 (** Produce a connection to [blocklistd].
 
-    @raises Out_of_memory if the underlying call returns [NULL], which it only
+    @raise Stdlib.Out_of_memory if the underlying call returns [NULL], which it only
       does if its call to [calloc] fails.
  *)
-
 val open' : unit -> handle
+
 (** Close a given {!handle}. *)
 val close : handle -> unit
 
 (** Using the provided action and control-socket descriptor, blocklist the given
     {{!Unix.sockaddr}} with the given string message.
 
-    @return 0 when the underlying call succeeds.
-    @raise Unix.Unix_error when the underlying call fails.
+    @return () when the underlying call succeeds.
+    @raise Failure when the underlying call returns nonzero but doesn't set [errno].
+    @raise Unix.Unix_error when the underlying call fails and sets [errno].
  *)
 val sa : action -> Unix.file_descr -> Unix.sockaddr -> string
-         -> int
+         -> unit
 
 (** Same as {!sa}, but takes an additional {!handle} from {!open'}, which keeps
     an open connection to the service.
 
-    @return 0 when the underlying call succeeds.
-    @raise Unix.Unix_error when the underlying call fails.
+    @return () when the underlying call succeeds.
+    @raise Failure when the underlying call returns nonzero but doesn't set [errno].
+    @raise Unix.Unix_error when the underlying call fails and sets [errno].
  *)
 val sa_r : handle ->
            action -> Unix.file_descr -> Unix.sockaddr -> string
-           -> int
+           -> unit
