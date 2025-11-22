@@ -28,7 +28,7 @@ let cmd =
   let doc = "a blocklisting http stub" in
   Cmd.make (Cmd.info "ratrap" ~version ~doc ~man) @@
   let+ bind_port and+ action in
-  Ratrap.ratrap bind_port action
+  Ratrap.ratrap ~bind_port ~action
 
 let () =
   if not !Sys.interactive then

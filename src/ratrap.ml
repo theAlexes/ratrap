@@ -108,11 +108,12 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
       let sockaddr = Unix.ADDR_INET (addr, bind_port) in
       match Blocklist.sa_r !bl action fd sockaddr "lol" with
       | () -> Eio.traceln "successfully blocklisted"
-      | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
-         Eio.traceln "did not blocklist, connection reset, falling back to _sa";
-         match Blocklist.sa action fd sockaddr "lol" with
-         | () -> Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
-         | exception exn -> Fmt.failwith "Blocklist service reset and did not respond to retries: %a " Eio.Exn.pp exn
+      | exception Unix.(Unix_error (ECONNRESET, _, _)) -> begin
+          Eio.traceln "did not blocklist, connection reset, falling back to _sa";
+          match Blocklist.sa action fd sockaddr "lol" with
+          | () -> Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
+          | exception exn -> Fmt.failwith "Blocklist service reset and did not respond to retries: %a " Eio.Exn.pp exn
+        end
       | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 

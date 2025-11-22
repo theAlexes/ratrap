@@ -28,8 +28,9 @@ val close : handle -> unit
 (** Using the provided action and control-socket descriptor, blocklist the given
     {{!Unix.sockaddr}} with the given string message.
 
-    @return () when the underlying call succeeds.
-    @raise Failure when the underlying call returns nonzero but doesn't set [errno].
+    @return [()] when the underlying call succeeds.
+    @raise Failure when the underlying call returns nonzero but doesn't set
+      [errno]. This should never happen.
     @raise Unix.Unix_error when the underlying call fails and sets [errno].
  *)
 val sa : action -> Unix.file_descr -> Unix.sockaddr -> string
@@ -38,8 +39,9 @@ val sa : action -> Unix.file_descr -> Unix.sockaddr -> string
 (** Same as {!sa}, but takes an additional {!handle} from {!open'}, which keeps
     an open connection to the service.
 
-    @return () when the underlying call succeeds.
-    @raise Failure when the underlying call returns nonzero but doesn't set [errno].
+    @return [()] when the underlying call succeeds.
+    @raise Failure when the underlying call returns nonzero but doesn't set
+      [errno]. This should never happen.
     @raise Unix.Unix_error when the underlying call fails and sets [errno].
  *)
 val sa_r : handle ->

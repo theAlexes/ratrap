@@ -46,7 +46,7 @@ let sa' =
 
 let sa action fd addr msg =
   let sockaddr, socklen = posix_sockaddr_of_unix_addr addr in
-  match sa' action fd sockaddr socklen msg with
+  sa' action fd sockaddr socklen msg |> function
   | 0 -> ()
   | x -> Fmt.failwith "blocklist_sa returned %d" x
 
@@ -58,6 +58,6 @@ let sa_r' =
 
 let sa_r handle action fd addr msg =
   let sockaddr, socklen = posix_sockaddr_of_unix_addr addr in
-  match sa_r' handle action fd sockaddr socklen msg with
+  sa_r' handle action fd sockaddr socklen msg |> function
   | 0 -> ()
   | x -> Fmt.failwith "blocklist_sa_r returned %d" x
