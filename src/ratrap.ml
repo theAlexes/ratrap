@@ -92,8 +92,8 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
   let bl = ref @@ Blocklist.open' () in
   Eio.Switch.on_release sw (fun _ -> Blocklist.close !bl);
   let v4, v6 =
-    let open Eio.Net.Ipaddr in
-    (control_socket ~sw V4.loopback, control_socket ~sw V6.loopback)
+    let bi f = Pair.map f f in
+    bi (control_socket ~sw) Eio.Net.Ipaddr.(V4.loopback, V6.loopback)
   in
   let reconnect () =
     let new_blocklist = Blocklist.open' () in
