@@ -17,18 +17,15 @@ let action_t : action typ = view ~read:action_of_int ~write:int_of_action int
 
 let fd : Unix.file_descr typ = view ~read:Obj.magic ~write:Obj.magic int
 
-let open_ =
-  foreign "blacklist_open" (void @-> returning t)
-
 let open' () =
-  let handle = open_ () in
+  let open'' = foreign "blacklist_open" (void @-> returning t) in
+  let handle = open'' () in
   if Ctypes.is_null handle then
     raise Out_of_memory
   else handle
 
 let close =
   foreign "blacklist_close" (t @-> returning void)
-
 
 let posix_sockaddr_of_unix_addr addr =
   let socklen_of_int x =
@@ -38,6 +35,12 @@ let posix_sockaddr_of_unix_addr addr =
   let socklen = socklen_of_int @@ Posix_socket.sockaddr_len sockaddr in
   sockaddr, socklen
 
+let fail_when_impossible call f =
+  f () |>
+    function
+    | 0 -> ()
+    | x -> Fmt.failwith "blocklist_%s returned %d" call x
+
 let sa' =
   foreign "blacklist_sa" ~check_errno:true (
       action_t @-> fd @->
@@ -46,9 +49,8 @@ let sa' =
 
 let sa action fd addr msg =
   let sockaddr, socklen = posix_sockaddr_of_unix_addr addr in
-  sa' action fd sockaddr socklen msg |> function
-  | 0 -> ()
-  | x -> Fmt.failwith "blocklist_sa returned %d" x
+  fail_when_impossible __FUNCTION__
+    (fun () -> sa' action fd sockaddr socklen msg)
 
 let sa_r' =
   foreign "blacklist_sa_r" ~check_errno:true (
@@ -58,6 +60,5 @@ let sa_r' =
 
 let sa_r handle action fd addr msg =
   let sockaddr, socklen = posix_sockaddr_of_unix_addr addr in
-  sa_r' handle action fd sockaddr socklen msg |> function
-  | 0 -> ()
-  | x -> Fmt.failwith "blocklist_sa_r returned %d" x
+  fail_when_impossible __FUNCTION__
+    (fun () -> sa_r' handle action fd sockaddr socklen msg)
