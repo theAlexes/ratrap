@@ -24,7 +24,7 @@ let cmd =
       `P "Report them to the author by whatever means necessary."
     ]
   in
-  let version = "1.6" in
+  let version = "1.618" in
   let doc = "a blocklisting http stub" in
   Cmd.make (Cmd.info "ratrap" ~version ~doc ~man) @@
   let+ bind_port and+ action in

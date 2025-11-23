@@ -106,6 +106,8 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
     Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
       let sockaddr = Unix.ADDR_INET (addr, bind_port) in
+      (* this is kind of a mess, but is enough to make a blocklistd restart
+         survivable without requiring a ratrap restart *)
       match Blocklist.sa_r !bl action fd sockaddr "ratrap" with
       | () -> Eio.traceln "successfully blocklisted"
       | exception Unix.(Unix_error (ECONNRESET, _, _)) -> begin
