@@ -1,0 +1,78 @@
+opam-version: "2.0"
+name: "ratrap"
+version: "dev"
+maintainer: "Alex ␀ Maestas <ocaml-ratrap@se30.xyz>"
+authors: "Alex ␀ Maestas <ocaml-ratrap@se30.xyz>"
+license: "ISC"
+homepage: "https://fossil.se30.xyz/ratrap"
+doc: "https://fossil.se30.xyz/ratrap"
+bug-reports: "https://fossil.se30.xyz/ratrap"
+depends: [
+  "angstrom" {= "0.16.1"}
+  "base" {= "v0.17.3"}
+  "base-bigarray" {= "base"}
+  "base-bytes" {= "base"}
+  "base-domains" {= "base"}
+  "base-effects" {= "base"}
+  "base-nnp" {= "base"}
+  "base-threads" {= "base"}
+  "base-unix" {= "base"}
+  "base64" {= "3.5.2"}
+  "bigstringaf" {= "0.10.0"}
+  "cmdliner" {= "2.0.0"}
+  "cohttp" {= "6.1.1"}
+  "cohttp-eio" {= "6.1.1"}
+  "conf-libffi" {= "2.0.0"}
+  "conf-pkg-config" {= "4"}
+  "cppo" {= "1.8.0"}
+  "csexp" {= "1.5.2"}
+  "cstruct" {= "6.2.0"}
+  "ctypes" {= "0.24.0"}
+  "ctypes-foreign" {= "0.24.0"}
+  "domain-local-await" {= "1.0.1"}
+  "dune" {= "3.20.2"}
+  "dune-configurator" {= "3.20.2"}
+  "eio" {= "1.3"}
+  "eio_main" {= "1.3"}
+  "eio_posix" {= "1.3"}
+  "fmt" {= "0.11.0"}
+  "hmap" {= "0.8.1"}
+  "http" {= "6.1.1"}
+  "integers" {= "0.7.0"}
+  "iomux" {= "0.4"}
+  "logs" {= "0.10.0"}
+  "lwt" {= "5.9.2"}
+  "lwt-dllist" {= "1.1.0"}
+  "mtime" {= "2.1.0"}
+  "ocaml" {= "5.4.0"}
+  "ocaml-compiler" {= "5.4.0"}
+  "ocaml-compiler-libs" {= "v0.17.0"}
+  "ocaml-config" {= "3"}
+  "ocaml-option-flambda" {= "1"}
+  "ocaml-syntax-shims" {= "1.0.0"}
+  "ocaml-variants" {= "5.4.0+options"}
+  "ocaml_intrinsics_kernel" {= "v0.17.1"}
+  "ocamlbuild" {= "0.16.1"}
+  "ocamlfind" {= "1.9.8"}
+  "ocplib-endian" {= "1.2"}
+  "optint" {= "0.3.0"}
+  "posix-base" {= "2.2.0"}
+  "posix-socket" {= "3.0.0"}
+  "ppx_derivers" {= "1.2.1"}
+  "ppx_sexp_conv" {= "v0.17.1"}
+  "ppxlib" {= "0.37.0"}
+  "ppxlib_jane" {= "v0.17.4"}
+  "psq" {= "0.2.1"}
+  "ptime" {= "1.2.0"}
+  "re" {= "1.14.0"}
+  "seq" {= "base"}
+  "sexplib0" {= "v0.17.0"}
+  "stdlib-shims" {= "0.3.0"}
+  "stringext" {= "1.6.0"}
+  "thread-table" {= "1.0.0"}
+  "topkg" {= "1.1.1"}
+  "uri" {= "4.4.0"}
+  "uri-sexp" {= "4.4.0"}
+]
+build: ["ocaml" "pkg/pkg.ml" "build" "--dev-pkg" "%{dev}%"]
+dev-repo: "https://fossil.se30.xyz/ratrap"
