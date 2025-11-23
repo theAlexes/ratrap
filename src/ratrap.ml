@@ -102,8 +102,7 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
   in
   while true do
     let addr = Eio.Stream.take stream in
-    let is_v6 = Unix.is_inet6_addr addr in
-    let loopback = if is_v6 then v6 else v4 in
+    let loopback = if Unix.is_inet6_addr addr then v6 else v4 in
     Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
       let sockaddr = Unix.ADDR_INET (addr, bind_port) in
