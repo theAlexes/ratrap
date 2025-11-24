@@ -8,7 +8,7 @@
 open Cohttp
 open Cohttp_eio
 
-let http_server bind_port (net:'a Eio.Net.t) (stream:Unix.inet_addr Eio.Stream.t) =
+let http_server ~bind_port ~(net:_ Eio.Net.t) ~(stream:Unix.inet_addr Eio.Stream.t) ?stop =
   let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
   let sip maxlen body =
     let buf = Cstruct.create maxlen in
@@ -71,7 +71,7 @@ let http_server bind_port (net:'a Eio.Net.t) (stream:Unix.inet_addr Eio.Stream.t
                  (`Tcp (Eio.Net.Ipaddr.V4.loopback, bind_port))
   and server = Cohttp_eio.Server.make ~callback () in
   Logs.app (fun m -> m "--- (bind port %d)" bind_port);
-  Cohttp_eio.Server.run socket server ~on_error:log_warning
+  Cohttp_eio.Server.run socket server ~on_error:log_warning ?stop
 
 let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) () =
   (* a regular Eio.Net.listen socket does not expose its FD to us,
@@ -119,18 +119,25 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
       | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
   done
 
-let run ~bind_port ~action ~(net:'a Eio.Net.t) =
+let run ~bind_port ~action ~(net:_ Eio.Net.t) ?stop =
   Eio.Switch.run ~name:"ratrap" @@ fun sw ->
   let stream : Unix.inet_addr Eio.Stream.t = Eio.Stream.create 0 in
   Eio.Fiber.fork_daemon ~sw (blocklist_server ~bind_port ~action ~stream);
-  http_server bind_port net stream
+  http_server ~bind_port ~net ~stream ?stop
 
 let ratrap ~bind_port ~action =
   Logs.set_reporter @@ Logs_fmt.reporter ();
   Eio_main.run @@ fun env ->
-     match run ~bind_port ~action ~net:env#net with
-     | _ -> Ok ()
-     | exception exn -> Fmt.error "%a" Eio.Exn.pp exn
+     let stop, stop' = Eio.Promise.create () in
+     let handler s =
+       Eio.Promise.resolve stop' @@ Ok ()
+     in
+     let open Sys in
+     List.iter
+       (fun s -> set_signal s @@ Signal_handle handler)
+       [ sighup ; sigint ; sigterm ; sigabrt ];
+     try run ~bind_port ~action ~net:env#net ~stop with
+     | exn -> Fmt.error "%a" Eio.Exn.pp exn
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas
