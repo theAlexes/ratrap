@@ -136,9 +136,7 @@ let ratrap ~bind_port ~action =
   Logs.set_reporter @@ Logs_fmt.reporter ();
   Eio_main.run @@ fun env ->
      let stop, stop' = Eio.Promise.create () in
-     let handler s =
-       Eio.Promise.resolve stop' @@ Ok ()
-     in
+     let handler _ = Eio.Promise.resolve_ok stop' () in
      let open Sys in
      List.iter
        (fun s -> set_signal s @@ Signal_handle handler)
