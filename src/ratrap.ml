@@ -102,21 +102,28 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
   in
   while true do
     let addr = Eio.Stream.take stream in
+    let addr' = Unix.string_of_inet_addr addr in
     let loopback = if Unix.is_inet6_addr addr then v6 else v4 in
     Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
+    (* fyi running this in a systhread means that if it throws, the only thing
+       that dies is that thread. *)
     Eio_unix.run_in_systhread ~label:"bl_systhread" @@ fun _ ->
       let sockaddr = Unix.ADDR_INET (addr, bind_port) in
       (* this is kind of a mess, but is enough to make a blocklistd restart
-         survivable without requiring a ratrap restart *)
+         survivable without requiring a ratrap restart. not sure if a result type
+         would improve the situation, though. *)
       match Blocklist.sa_r !bl action fd sockaddr "ratrap" with
-      | () -> Eio.traceln "successfully blocklisted"
+      | () -> Eio.traceln "successfully blocklisted %s" addr'
       | exception Unix.(Unix_error (ECONNRESET, _, _)) -> begin
-          Eio.traceln "did not blocklist, connection reset, falling back to sa";
+          Eio.traceln "did not blocklist %s, connection reset, falling back to sa" addr';
           match Blocklist.sa action fd sockaddr "ratrap" with
-          | () -> Eio.traceln "fallback succeeded; reconnecting"; reconnect ()
-          | exception exn -> Fmt.failwith "Blocklist service reset and did not respond to retries: %a" Eio.Exn.pp exn
+          | () ->
+             Eio.traceln "fallback succeeded for %s; reconnecting" addr';
+             reconnect ()
+          | exception exn ->
+             Fmt.failwith "double-failed on %s: Blocklist service reset and did not respond to retries: %a" addr' Eio.Exn.pp exn
         end
-      | exception exn -> Eio.traceln "failed to blocklist: %a" Eio.Exn.pp exn
+      | exception exn -> Eio.traceln "failed to blocklist %s: %a" addr' Eio.Exn.pp exn
   done
 
 let run ~bind_port ~action ~(net:_ Eio.Net.t) ?stop =

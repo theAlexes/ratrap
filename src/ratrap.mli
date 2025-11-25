@@ -12,12 +12,18 @@
 (** {1 Ratrap} *)
 
 (** Run on the given port, with the requested mode, and on a network; if provided, stop when the promise resolves. *)
-val run : bind_port:int -> action:Blocklist.action -> net:_ Eio.Net.t -> ?stop:(unit, string) result Eio.Promise.t -> (unit, string) result
+val run : bind_port:int
+       -> action:Blocklist.action
+       -> net:_ Eio.Net.t
+       -> ?stop:(unit, string) result Eio.Promise.t
+       -> (unit, string) result
 
 (** Use Eio_main to run the app on the default event loop, gracefully stopping
     on [SIGHUP], [SIGINT], [SIGTERM], and [SIGABRT].
  *)
-val ratrap : bind_port:int -> action:Blocklist.action -> (unit, string) result
+val ratrap : bind_port:int
+          -> action:Blocklist.action
+          -> (unit, string) result
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas
