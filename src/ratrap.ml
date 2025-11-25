@@ -7,12 +7,13 @@
 
 open Cohttp
 open Cohttp_eio
+open Eio
 
-let http_server ~bind_port ~(net:_ Eio.Net.t) ~(stream:Unix.inet_addr Eio.Stream.t) ?stop =
+let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?stop =
   let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
   let sip maxlen body =
     let buf = Cstruct.create maxlen in
-    let len = try Eio.Flow.single_read body buf with
+    let len = try Flow.single_read body buf with
               | End_of_file | Unix.Unix_error _ -> 0
     in Cstruct.to_string ~len buf
   in
@@ -33,7 +34,7 @@ let http_server ~bind_port ~(net:_ Eio.Net.t) ~(stream:Unix.inet_addr Eio.Stream
     String.iter defang' string;
     Buffer.contents buf
   in
-  let string_of_sockaddr = Fmt.str "%a" Eio.Net.Sockaddr.pp in
+  let string_of_sockaddr = Fmt.str "%a" Net.Sockaddr.pp in
   let rec callback transport req body =
     let path = req |> Request.uri |> Uri.path_and_query
     and meth = req |> Request.meth |> Code.string_of_method
@@ -57,30 +58,30 @@ let http_server ~bind_port ~(net:_ Eio.Net.t) ~(stream:Unix.inet_addr Eio.Stream
     | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
               `Internal_server_error
   and blocklist xff stream =
-    Eio.traceln "Blocklisting %s" xff;
+    traceln "Blocklisting %s" xff;
     match Unix.inet_addr_of_string xff with
     | addr ->
-       Eio.Stream.add stream addr
+       Stream.add stream addr
     | exception Failure _ ->
        Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
   in
-  let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex) in
-  Eio.Switch.run ~name:"http" @@ fun sw ->
-  let socket = Eio.Net.listen net ~sw
+  let log_warning ex = Logs.warn (fun f -> f "%a" Exn.pp ex) in
+  Switch.run ~name:"http" @@ fun sw ->
+  let socket = Net.listen net ~sw
                  ~backlog:128 ~reuse_addr:true ~reuse_port:true
-                 (`Tcp (Eio.Net.Ipaddr.V4.loopback, bind_port))
+                 (`Tcp (Net.Ipaddr.V4.loopback, bind_port))
   and server = Cohttp_eio.Server.make ~callback () in
   Logs.app (fun m -> m "--- (bind port %d)" bind_port);
   Cohttp_eio.Server.run socket server ~on_error:log_warning ?stop
 
-let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) () =
+let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Stream.t) () =
   (* a regular Eio.Net.listen socket does not expose its FD to us,
      so we must construct a socket and bind it ourselves.
      i suppose we could use the `import_listening_socket` call, but
      we really aren't using it for anything other than its file descriptor. *)
   let control_socket ~sw bind_addr =
     let open Unix in
-    let pf = Eio.Net.Ipaddr.fold bind_addr
+    let pf = Net.Ipaddr.fold bind_addr
                ~v4:Fun.(const PF_INET) ~v6:Fun.(const PF_INET6) in
     let listener = socket ~cloexec:true pf SOCK_STREAM 0 in
     setsockopt listener SO_REUSEADDR true;
@@ -88,12 +89,12 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
     bind listener @@ Eio_unix.Net.sockaddr_to_unix (`Tcp (bind_addr, bind_port));
     Eio_unix.Fd.of_unix ~sw ~close_unix:true listener
   in
-  Eio.Switch.run ~name:"blocklist" @@ fun sw ->
+  Switch.run ~name:"blocklist" @@ fun sw ->
   let bl = ref @@ Blocklist.open' () in
-  Eio.Switch.on_release sw (fun _ -> Blocklist.close !bl);
+  Switch.on_release sw (fun _ -> Blocklist.close !bl);
   let v4, v6 =
     let bi f = Pair.map f f in
-    bi (control_socket ~sw) Eio.Net.Ipaddr.(V4.loopback, V6.loopback)
+    bi (control_socket ~sw) Net.Ipaddr.(V4.loopback, V6.loopback)
   in
   let reconnect () =
     let new_blocklist = Blocklist.open' () in
@@ -101,7 +102,7 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
     bl := new_blocklist
   in
   while true do
-    let addr = Eio.Stream.take stream in
+    let addr = Stream.take stream in
     let addr' = Unix.string_of_inet_addr addr in
     let loopback = if Unix.is_inet6_addr addr then v6 else v4 in
     Eio_unix.Fd.use loopback ~if_closed:ignore @@ fun fd ->
@@ -113,36 +114,36 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Eio.Stream.t) ()
          survivable without requiring a ratrap restart. not sure if a result type
          would improve the situation, though. *)
       match Blocklist.sa_r !bl action fd sockaddr "ratrap" with
-      | () -> Eio.traceln "successfully blocklisted %s" addr'
+      | () -> traceln "successfully blocklisted %s" addr'
       | exception Unix.(Unix_error (ECONNRESET, _, _)) -> begin
-          Eio.traceln "did not blocklist %s, connection reset, falling back to sa" addr';
+          traceln "did not blocklist %s, connection reset, falling back to sa" addr';
           match Blocklist.sa action fd sockaddr "ratrap" with
           | () ->
-             Eio.traceln "fallback succeeded for %s; reconnecting" addr';
+             traceln "fallback succeeded for %s; reconnecting" addr';
              reconnect ()
           | exception exn ->
-             Fmt.failwith "double-failed on %s: Blocklist service reset and did not respond to retries: %a" addr' Eio.Exn.pp exn
+             Fmt.failwith "double-failed on %s: Blocklist service reset and did not respond to retries: %a" addr' Exn.pp exn
         end
-      | exception exn -> Eio.traceln "failed to blocklist %s: %a" addr' Eio.Exn.pp exn
+      | exception exn -> traceln "failed to blocklist %s: %a" addr' Exn.pp exn
   done
 
-let run ~bind_port ~action ~(net:_ Eio.Net.t) ?stop =
-  Eio.Switch.run ~name:"ratrap" @@ fun sw ->
-  let stream : Unix.inet_addr Eio.Stream.t = Eio.Stream.create 0 in
-  Eio.Fiber.fork_daemon ~sw (blocklist_server ~bind_port ~action ~stream);
+let run ~bind_port ~action ~(net:_ Net.t) ?stop =
+  Switch.run ~name:"ratrap" @@ fun sw ->
+  let stream : Unix.inet_addr Stream.t = Stream.create 0 in
+  Fiber.fork_daemon ~sw (blocklist_server ~bind_port ~action ~stream);
   http_server ~bind_port ~net ~stream ?stop
 
 let ratrap ~bind_port ~action =
   Logs.set_reporter @@ Logs_fmt.reporter ();
   Eio_main.run @@ fun env ->
-     let stop, stop' = Eio.Promise.create () in
-     let handler _ = Eio.Promise.resolve_ok stop' () in
+     let stop, stop' = Promise.create () in
+     let handler _ = Promise.resolve_ok stop' () in
      let open Sys in
      List.iter
        (fun s -> set_signal s @@ Signal_handle handler)
        [ sighup ; sigint ; sigterm ; sigabrt ];
      try run ~bind_port ~action ~net:env#net ~stop with
-     | exn -> Fmt.error "%a" Eio.Exn.pp exn
+     | exn -> Fmt.error "%a" Exn.pp exn
 
 (*---------------------------------------------------------------------------
    Copyright (c) 2025 Alex ␀ Maestas
