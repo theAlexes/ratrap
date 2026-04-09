@@ -11,6 +11,7 @@ open Eio
 
 let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?stop =
   let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
+  let siplen = 240 in
   let sip maxlen body =
     let buf = Cstruct.create maxlen in
     let len = try Flow.single_read body buf with
@@ -38,8 +39,16 @@ let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?sto
   let rec callback transport req body =
     let path = req |> Request.uri |> Uri.path_and_query
     and meth = req |> Request.meth |> Code.string_of_method
-    and headers = req |> Request.headers
-    and request_body = sip 240 body
+    and headers = req |> Request.headers in
+    let maxlen =
+      match Header.get headers "content-length" with
+      | Some cl -> min siplen (try int_of_string cl with _ -> siplen)
+      | None -> siplen
+    in
+    let request_body =
+      match Request.meth req with
+      | `GET | `HEAD -> ""
+      | _ -> sip maxlen body
     and ((_, conn), _) = transport in
     Logs.app (fun m ->
         m "Connection from %s\n%s %s\n%s\n\n%s"
