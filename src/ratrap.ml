@@ -37,8 +37,9 @@ let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?sto
   in
   let string_of_sockaddr = Fmt.str "%a" Net.Sockaddr.pp in
   let rec callback transport req body =
-    let path = req |> Request.uri |> Uri.path_and_query
-    and meth = req |> Request.meth |> Code.string_of_method
+    let ((_, conn), _) = transport
+    and path = req |> Request.uri |> Uri.path_and_query
+    and meth = req |> Request.meth
     and headers = req |> Request.headers in
     let maxlen =
       match Header.get headers "content-length" with
@@ -46,14 +47,14 @@ let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?sto
       | None -> siplen
     in
     let request_body =
-      match Request.meth req with
+      match meth with
       | `GET | `HEAD -> ""
       | _ -> sip maxlen body
-    and ((_, conn), _) = transport in
+    in
     Logs.app (fun m ->
         m "Connection from %s\n%s %s\n%s\n\n%s"
           (string_of_sockaddr conn)
-          meth (defang path)
+          (Code.string_of_method meth) (defang path)
           (* we're on unix, don't put \r when displaying the headers *)
           (defang @@ String.concat "\n" @@ Header.to_frames headers)
           (defang request_body));
