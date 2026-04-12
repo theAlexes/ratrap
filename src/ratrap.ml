@@ -49,7 +49,7 @@ let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?sto
     in
     let request_body =
       match meth with
-      | `GET | `HEAD -> ""
+      | `GET | `HEAD | `DELETE -> ""
       | _ -> sip maxlen body
     in
     Logs.app (fun m ->
