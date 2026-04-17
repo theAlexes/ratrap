@@ -130,7 +130,8 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Stream.t) () =
          would improve the situation, though. *)
       match Blocklist.sa_r !bl action fd sockaddr "ratrap" with
       | () -> traceln "successfully blocklisted %s" addr'
-      | exception Unix.(Unix_error (ECONNRESET, _, _)) -> begin
+      | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
+         begin
           traceln "did not blocklist %s, connection reset, falling back to sa" addr';
           match Blocklist.sa action fd sockaddr "ratrap" with
           | () ->
@@ -138,7 +139,7 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Stream.t) () =
              reconnect ()
           | exception exn ->
              Fmt.failwith "double-failed on %s: Blocklist service reset and did not respond to retries: %a" addr' Exn.pp exn
-        end
+         end
       | exception exn -> traceln "failed to blocklist %s: %a" addr' Exn.pp exn
   done
 
