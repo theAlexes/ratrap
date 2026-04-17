@@ -107,10 +107,14 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Stream.t) () =
     let bi f = Pair.map f f in
     bi (control_socket ~sw) Net.Ipaddr.(V4.loopback, V6.loopback)
   in
+  let mutex = Eio.Mutex.create () in
   let reconnect () =
-    let new_blocklist = Blocklist.open' () in
-    ignore @@ Blocklist.close !bl;
-    bl := new_blocklist
+    Eio.Mutex.use_rw ~protect:false mutex @@
+      fun () ->
+      let new_blocklist = Blocklist.open' () in
+      traceln "new connection obtained, swapping out";
+      ignore @@ Blocklist.close !bl;
+      bl := new_blocklist
   in
   while true do
     let addr = Stream.take stream in
