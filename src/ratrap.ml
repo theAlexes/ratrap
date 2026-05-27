@@ -44,7 +44,7 @@ let http_server ~sw ~bind_port ~(net:_ Net.t) ~(cl:_ Eio.Time.clock) ~(stream:Un
   in
   let string_of_sockaddr = Fmt.str "%a" Net.Sockaddr.pp in
   let recents = Htbl.create ~hashed_type:(module InetAddr) () in
-  let rec maybe_add stream addr xff =
+  let maybe_add stream addr xff =
     let maybe_remove () =
       Time.sleep cl 5.0;
       traceln "Forgetting about %s" xff;
@@ -57,7 +57,22 @@ let http_server ~sw ~bind_port ~(net:_ Net.t) ~(cl:_ Eio.Time.clock) ~(stream:Un
         Fiber.fork ~sw maybe_remove
       end
     else traceln "Already blocked %s recently, skipping" xff
-  and callback transport req body =
+  in
+  let blocklist xff stream =
+    match Unix.inet_addr_of_string xff with
+    | addr ->
+       maybe_add stream addr xff
+    | exception Failure _ ->
+       Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
+  in
+  let blocklist_of_headers h stream =
+    match Header.get h "x-forwarded-for" with
+    | Some xff -> blocklist (defang xff) stream;
+                  `Not_found
+    | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
+              `Internal_server_error
+  in
+  let callback transport req body =
     let ((_, conn), _) = transport
     and path = req |> Request.uri |> Uri.path_and_query
     and meth = req |> Request.meth
@@ -82,18 +97,6 @@ let http_server ~sw ~bind_port ~(net:_ Net.t) ~(cl:_ Eio.Time.clock) ~(stream:Un
     let status = blocklist_of_headers headers stream in
     Logs.app (fun m -> m "---");
     Cohttp_eio.Server.respond_string ~headers:connection_close ~status ~body:"" ()
-  and blocklist_of_headers h stream =
-    match Header.get h "x-forwarded-for" with
-    | Some xff -> blocklist (defang xff) stream;
-                  `Not_found
-    | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
-              `Internal_server_error
-  and blocklist xff stream =
-    match Unix.inet_addr_of_string xff with
-    | addr ->
-       maybe_add stream addr xff
-    | exception Failure _ ->
-       Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
   in
   let log_warning ex = Logs.warn (fun f -> f "%a" Exn.pp ex) in
   Switch.run ~name:"http" @@ fun sw ->
