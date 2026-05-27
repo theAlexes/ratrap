@@ -17,8 +17,9 @@ let action_t : action typ = view ~read:action_of_int ~write:int_of_action int
 
 let fd : Unix.file_descr typ = view ~read:Obj.magic ~write:Obj.magic int
 
-let open' () =
+let open' =
   let open'' = foreign "blacklist_open" (void @-> returning t) in
+  fun () ->
   let handle = open'' () in
   if Ctypes.is_null handle then
     raise Out_of_memory

@@ -16,7 +16,7 @@ module InetAddr = struct
   let hash = Hashtbl.hash
 end
 
-let http_server ~sw ~bind_port ~(net:_ Net.t) ~(cl:_ Eio.Time.clock) ~(stream:Unix.inet_addr Stream.t) ?stop =
+let http_server ~sw ~bind_port ~(net:_ Net.t) ~(cl:_ Time.clock) ~(stream:Unix.inet_addr Stream.t) ?stop =
   let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
   let siplen = 240 in
   let sip maxlen body =
