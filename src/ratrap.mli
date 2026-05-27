@@ -11,10 +11,11 @@
 
 (** {1 Ratrap} *)
 
-(** Run on the given port, with the requested mode, and on a network; if provided, stop when the promise resolves. *)
+(** Run on the given port, with the requested mode, and on a network and clock; if provided, stop when the promise resolves. *)
 val run : bind_port:int
        -> action:Blocklist.action
        -> net:_ Eio.Net.t
+       -> cl:_ Eio.Time.clock
        -> ?stop:(unit, string) result Eio.Promise.t
        -> (unit, string) result
 

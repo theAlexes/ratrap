@@ -3,7 +3,7 @@ true : ldopt(-shared)
     bin_annot, safe_string, principal, cclib(-lblacklist), \
     package(bytes), package(cmdliner), package(ctypes), package(ctypes-foreign), package(eio_main), \
     package(http), package(cohttp), package(cohttp-eio), package(logs.fmt), package(logs.threaded), \
-    package(posix-socket), package(unix)
+    package(posix-socket), package(saturn), package(unix)
 
 <src> : include
 <test> : include

@@ -20,6 +20,7 @@ depends:
   "ctypes-foreign"
   "cohttp-eio"
   "posix-socket"
+  "saturn"
 ]
 depopts: []
 build:

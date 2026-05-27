@@ -8,8 +8,15 @@
 open Cohttp
 open Cohttp_eio
 open Eio
+open Saturn
 
-let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?stop =
+module InetAddr = struct
+  type t = Unix.inet_addr
+  let equal = Stdlib.(=)
+  let hash = Hashtbl.hash
+end
+
+let http_server ~sw ~bind_port ~(net:_ Net.t) ~(cl:_ Eio.Time.clock) ~(stream:Unix.inet_addr Stream.t) ?stop =
   let connection_close = Cohttp.Header.(of_list [("connection", "close")]) in
   let siplen = 240 in
   let sip maxlen body =
@@ -36,7 +43,21 @@ let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?sto
     Buffer.contents buf
   in
   let string_of_sockaddr = Fmt.str "%a" Net.Sockaddr.pp in
-  let rec callback transport req body =
+  let recents = Htbl.create ~hashed_type:(module InetAddr) () in
+  let rec maybe_add stream addr xff =
+    let maybe_remove () =
+      Time.sleep cl 5.0;
+      traceln "Forgetting about %s" xff;
+      Htbl.try_remove recents addr |> ignore
+    in
+    if Htbl.try_add recents addr ()
+    then begin
+        traceln "Blocklisting %s" xff;
+        Stream.add stream addr;
+        Fiber.fork ~sw maybe_remove
+      end
+    else traceln "Already blocked %s recently, skipping" xff
+  and callback transport req body =
     let ((_, conn), _) = transport
     and path = req |> Request.uri |> Uri.path_and_query
     and meth = req |> Request.meth
@@ -68,10 +89,9 @@ let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?sto
     | None -> Logs.app (fun m -> m "Missing x-forwarded-for header, not blocklisting");
               `Internal_server_error
   and blocklist xff stream =
-    traceln "Blocklisting %s" xff;
     match Unix.inet_addr_of_string xff with
     | addr ->
-       Stream.add stream addr
+       maybe_add stream addr xff
     | exception Failure _ ->
        Logs.app (fun m -> m "Address %s did not parse, skipping" xff)
   in
@@ -142,11 +162,11 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Stream.t) () =
       | exception exn -> traceln "failed to blocklist %s: %a" addr' Exn.pp exn
   done
 
-let run ~bind_port ~action ~(net:_ Net.t) ?stop =
+let run ~bind_port ~action ~(net:_ Net.t) ~cl ?stop =
   Switch.run ~name:"ratrap" @@ fun sw ->
   let stream : Unix.inet_addr Stream.t = Stream.create 0 in
   Fiber.fork_daemon ~sw (blocklist_server ~bind_port ~action ~stream);
-  http_server ~bind_port ~net ~stream ?stop
+  http_server ~sw ~cl ~bind_port ~net ~stream ?stop
 
 let ratrap ~bind_port ~action =
   Logs.set_reporter @@ Logs_fmt.reporter ();
@@ -157,7 +177,7 @@ let ratrap ~bind_port ~action =
      List.iter
        (fun s -> set_signal s @@ Signal_handle handler)
        [ sighup ; sigint ; sigterm ; sigabrt ];
-     try run ~bind_port ~action ~net:env#net ~stop with
+     try run ~bind_port ~action ~net:env#net ~cl:env#clock ~stop with
      | exn -> Fmt.error "%a" Exn.pp exn
 
 (*---------------------------------------------------------------------------
