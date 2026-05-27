@@ -50,7 +50,9 @@ blacklist_sa_r(struct blacklist *handle, int action, int fd,
         return -1;
     }
     if(!ok) {
+        int sv = errno;
         fprintf(stderr, "blocklist with handle %p: did not convert sockaddr: %s", handle, strerror(errno));
+        errno = sv;
         return -1;
     }
     if (strcmp(buf, "8.8.8.8") == 0 && handle) {
