@@ -55,6 +55,13 @@ blacklist_sa_r(struct blacklist *handle, int action, int fd,
         errno = sv;
         return -1;
     }
+    fprintf(stderr, "%p: sockaddr: %s\n", handle, buf);
+    fprintf(stderr, "%p: message: %s\n", handle, msg);
+    if (strcmp(buf, "8.8.8.7") == 0) {
+        fprintf(stderr, "%p: faking a %s to test total failure\n", handle, handle ? "connection reset" : "no-bufs");
+        errno = handle ? ECONNRESET : ENOBUFS;
+        return -1;
+    }
     if (strcmp(buf, "8.8.8.8") == 0 && handle) {
         fprintf(stderr, "%p: faking a connection reset to test fallback\n", handle);
         errno = ECONNRESET;
@@ -65,8 +72,6 @@ blacklist_sa_r(struct blacklist *handle, int action, int fd,
         errno = ENOBUFS;
         return -1;
     }
-    fprintf(stderr, "%p: sockaddr: %s\n", handle, buf);
-    fprintf(stderr, "%p: message: %s\n", handle, msg);
     return 0;
 }
 
