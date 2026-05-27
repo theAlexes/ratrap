@@ -54,12 +54,17 @@ blacklist_sa_r(struct blacklist *handle, int action, int fd,
         return -1;
     }
     if (strcmp(buf, "8.8.8.8") == 0 && handle) {
-        fprintf(stderr, "faking a connection reset to test fallback\n");
+        fprintf(stderr, "%p: faking a connection reset to test fallback\n", handle);
         errno = ECONNRESET;
         return -1;
     }
-    fprintf(stderr, "sockaddr: %s\n", buf);
-    fprintf(stderr, "message: %s\n", msg);
+    if (strcmp(buf, "8.8.8.9") == 0 && handle) {
+        fprintf(stderr, "%p: faking out-of-buffer-space to test exceptions\n", handle);
+        errno = ENOBUFS;
+        return -1;
+    }
+    fprintf(stderr, "%p: sockaddr: %s\n", handle, buf);
+    fprintf(stderr, "%p: message: %s\n", handle, msg);
     return 0;
 }
 

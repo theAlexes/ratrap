@@ -130,6 +130,7 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Stream.t) () =
   let reconnect () =
     Eio.Mutex.use_rw ~protect:false mutex @@
       fun () ->
+      traceln "blocklistd connection was reset; reconnecting";
       let new_blocklist = Blocklist.open' () in
       traceln "new connection obtained, swapping out";
       ignore @@ Blocklist.close !bl;
@@ -149,15 +150,15 @@ let blocklist_server ~bind_port ~action ~(stream:Unix.inet_addr Stream.t) () =
          would improve the situation, though. *)
       match Blocklist.sa_r !bl action fd sockaddr "ratrap" with
       | () -> traceln "successfully blocklisted %s" addr'
-      | exception Unix.(Unix_error (ECONNRESET, _, _)) ->
+      | exception Unix.(Unix_error (errno, _, _)) ->
          begin
-          traceln "did not blocklist %s, connection reset, falling back to sa" addr';
+          traceln "did not blocklist %s (%s), falling back to sa" addr' Unix.(error_message errno);
           match Blocklist.sa action fd sockaddr "ratrap" with
           | () ->
-             traceln "fallback succeeded for %s; reconnecting" addr';
-             reconnect ()
+             traceln "fallback succeeded for %s" addr';
+             if errno = Unix.ECONNRESET then reconnect ()
           | exception exn ->
-             Fmt.failwith "double-failed on %s: Blocklist service reset and did not respond to retries: %a" addr' Exn.pp exn
+             Fmt.failwith "double-failed on %s: Blocklist service errored, and did not respond to retries: %a" addr' Exn.pp exn
          end
       | exception exn -> traceln "failed to blocklist %s: %a" addr' Exn.pp exn
   done
