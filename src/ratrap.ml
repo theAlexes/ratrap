@@ -42,14 +42,13 @@ let http_server ~bind_port ~(net:_ Net.t) ~(stream:Unix.inet_addr Stream.t) ?sto
     and meth = req |> Request.meth
     and headers = req |> Request.headers in
     let maxlen =
-      match (meth, Header.get headers "content-length") with
-      | (_, Some cl) -> min siplen (try int_of_string cl with _ -> siplen)
-      | (`Other "PROPFIND", None) -> 0
-      | (_, None) -> siplen
+      match Header.get headers "content-length" with
+      | Some cl -> min siplen (try int_of_string cl with _ -> siplen)
+      | None -> siplen
     in
     let request_body =
       match meth with
-      | `GET | `HEAD | `DELETE -> ""
+      | `GET | `HEAD | `DELETE | `Other "PROPFIND" -> ""
       | _ -> sip maxlen body
     in
     Logs.app (fun m ->
