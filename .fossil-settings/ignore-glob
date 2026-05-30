@@ -1,0 +1,9 @@
+_opam
+_build
+tmp
+*~
+\.\#*
+\#*#
+*.install
+*.native
+*.byte
